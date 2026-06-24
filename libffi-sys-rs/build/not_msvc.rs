@@ -75,7 +75,14 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
 
     let target = std::env::var("TARGET").unwrap();
     let host = std::env::var("HOST").unwrap();
-    if target != host {
+    // Pass --host when cross-compiling, and also for any MinGW/gnullvm target even when target == host.
+    // When the Rust host is itself a *-windows-gnu / *-windows-gnullvm triple, the build is "native" from
+    // Cargo's view, so without this we would skip --host and let configure auto-detect. Under an MSYS2 MSYS
+    // shell, config.guess then reports x86_64-pc-msys and enables the Linux static-trampoline path in tramp.c
+    // (size_t / NULL / sysconf / off_t), which cannot compile with a clang targeting windows-gnu. Forcing
+    // --host makes configure treat it as a Windows host regardless of which sh ran config.guess.
+    let target_is_mingw = target.contains("-windows-gnu");
+    if target != host || target_is_mingw {
         let cross_host = match target.as_str() {
             // Autoconf uses riscv64 while Rust uses riscv64gc for the architecture
             "riscv64gc-unknown-linux-gnu" | "riscv64a23-unknown-linux-gnu" => {
