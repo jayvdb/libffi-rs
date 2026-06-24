@@ -54,6 +54,44 @@ jobs:
         shell: msys2 {0}
         run: cargo test --workspace ${{ matrix.features }}
 
+  # Reproduces edge-toolkit/core's gnullvm failure. The Rust *host* is itself x86_64-pc-windows-gnullvm
+  # (so target == host), which makes not_msvc.rs skip --host. Critically the build runs under MSYS2's MSYS
+  # subsystem (msystem: MSYS) -- the same as edge-toolkit's conda msys2 sh -- so libffi's config.guess reports
+  # x86_64-pc-msys and enables the Linux static-trampoline path, which cannot compile with a windows-gnu clang
+  # (undeclared size_t / sysconf / off_t / malloc in tramp.c). Under MINGW64/UCRT64 config.guess instead reports
+  # a windows host and the build succeeds, which is why a plain MSYS2 setup hides the bug.
+  windows-gnullvm:
+    runs-on: windows-latest
+    name: windows-gnullvm stable
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup MSYS2 (MSYS subsystem)
+        uses: msys2/setup-msys2@61f9e5e925871ba6c9e3e8da24ede83ea27fa91f
+        with:
+          msystem: MSYS
+          release: false
+          path-type: inherit
+      - name: Install llvm-mingw
+        shell: bash
+        run: |
+          ver=20260602
+          base=https://github.com/mstorsjo/llvm-mingw/releases/download
+          curl -L -o "$RUNNER_TEMP/llvm-mingw.zip" "$base/$ver/llvm-mingw-$ver-ucrt-x86_64.zip"
+          7z x "$RUNNER_TEMP/llvm-mingw.zip" -o"$RUNNER_TEMP" > /dev/null
+          echo "LLVM_MINGW_BIN=$RUNNER_TEMP/llvm-mingw-$ver-ucrt-x86_64/bin" >> "$GITHUB_ENV"
+      - name: Install gnullvm host toolchain
+        shell: bash
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnullvm --profile minimal
+          rustup default stable-x86_64-pc-windows-gnullvm
+      - name: Build libffi-sys (gnullvm host, MSYS subsystem)
+        shell: msys2 {0}
+        env:
+          CARGO_BUILD_TARGET: x86_64-pc-windows-gnullvm
+          CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_LINKER: ${{ env.LLVM_MINGW_BIN }}/clang.exe
+          CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_RUSTFLAGS: -Cdlltool=${{ env.LLVM_MINGW_BIN }}/llvm-dlltool.exe
+        run: cargo build -vv -p libffi-sys
+
   macos:
     strategy:
       fail-fast: false
