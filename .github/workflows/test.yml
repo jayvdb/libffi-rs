@@ -61,11 +61,17 @@ jobs:
   # (undeclared size_t / sysconf / off_t / malloc in tramp.c). Under MINGW64/UCRT64 config.guess instead reports
   # a windows host and the build succeeds, which is why a plain MSYS2 setup hides the bug.
   windows-gnullvm:
+    strategy:
+      fail-fast: false
+      matrix:
+        features:
+          - "--no-default-features"
+          - "--features std"
     runs-on: windows-latest
-    name: windows-gnullvm stable
+    name: windows-gnullvm stable ${{ matrix.features }}
     steps:
       - uses: actions/checkout@v6
-      - name: Setup MSYS2 (MSYS subsystem)
+      - name: Setup MSYS2 subsystem
         uses: msys2/setup-msys2@61f9e5e925871ba6c9e3e8da24ede83ea27fa91f
         with:
           msystem: MSYS
@@ -90,7 +96,7 @@ jobs:
           CARGO_BUILD_TARGET: x86_64-pc-windows-gnullvm
           CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_LINKER: ${{ env.LLVM_MINGW_BIN }}/clang.exe
           CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_RUSTFLAGS: -Cdlltool=${{ env.LLVM_MINGW_BIN }}/llvm-dlltool.exe
-        run: cargo build -vv -p libffi-sys
+        run: cargo build -vv -p libffi-sys ${{ matrix.features }}
 
   macos:
     strategy:
